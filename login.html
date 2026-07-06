@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f12">
+  <title>Login — Fitness Park</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="page page--auth page--no-nav">
+    <div class="auth-logo">
+      <div class="auth-logo__icon">FP</div>
+      <div class="auth-logo__name">Fitness Park</div>
+      <div class="auth-logo__tagline">Your daily workout, simplified</div>
+    </div>
+
+    <div id="alert"></div>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label class="form-label" for="phone">Phone number</label>
+        <input class="form-input" type="tel" id="phone" name="phone" placeholder="9876543210" autocomplete="tel" required>
+        <p class="form-hint">Enter your registered phone number</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <div class="password-field">
+          <input class="form-input" type="password" id="password" name="password" placeholder="Your password" autocomplete="current-password" required>
+          <button type="button" class="password-toggle" id="password-toggle" aria-label="Show password">Show</button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn--primary" id="submit-btn">Log in</button>
+    </form>
+
+    <p class="auth-footer">
+      New here? <a href="signup.html">Create an account</a>
+    </p>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    showFirebaseSetupBanner();
+    redirectIfAuthenticated();
+    initPasswordToggle("password", "password-toggle");
+
+    const form = document.getElementById("login-form");
+    const alertBox = document.getElementById("alert");
+    const submitBtn = document.getElementById("submit-btn");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearAlert(alertBox);
+
+      if (!FIREBASE_CONFIGURED) {
+        showAlert(alertBox, "Please configure Firebase in js/firebase-config.js first.");
+        return;
+      }
+
+      const phone = document.getElementById("phone").value;
+      const password = document.getElementById("password").value;
+
+      setLoading(submitBtn, true);
+      try {
+        await signIn(phone, password);
+        window.location.href = "home.html";
+      } catch (err) {
+        showAlert(alertBox, formatAuthError(err));
+      } finally {
+        setLoading(submitBtn, false);
+      }
+    });
+  </script>
+</body>
+</html>

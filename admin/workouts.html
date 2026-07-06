@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f12">
+  <title>Workouts — Fitness Park Admin</title>
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div class="page" id="app">
+    <div class="loading-screen"><div class="spinner"></div><p>Loading...</p></div>
+  </div>
+
+  <div class="modal-overlay" id="modal" hidden>
+    <div class="modal">
+      <h2 class="modal__title" id="modal-title">Create Workout</h2>
+      <form id="workout-form">
+        <input type="hidden" id="workout-id">
+        <div class="form-group">
+          <label class="form-label" for="wo-name">Workout name</label>
+          <input class="form-input" type="text" id="wo-name" required placeholder="e.g. Chest Day A">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="wo-type">Type</label>
+          <select class="form-select" id="wo-type" required></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="wo-focus">Focus</label>
+          <select class="form-select" id="wo-focus" required></select>
+        </div>
+
+        <div class="section-title">Exercises</div>
+        <div id="workout-exercises"></div>
+
+        <div class="form-group">
+          <select class="form-select" id="add-exercise-select"></select>
+        </div>
+        <button type="button" class="btn btn--secondary" id="add-exercise-btn" style="width:100%;margin-bottom:12px">+ Add exercise</button>
+
+        <div class="modal__actions">
+          <button type="button" class="btn btn--secondary" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary">Save workout</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/db.js"></script>
+  <script src="../js/ui.js"></script>
+  <script>
+    const app = document.getElementById("app");
+    const modal = document.getElementById("modal");
+    let workouts = [];
+    let exercises = [];
+    let profile = null;
+    let workoutItems = [];
+
+    function getWorkoutType() {
+      return document.getElementById("wo-type").value;
+    }
+
+    function renderWorkoutExerciseRows() {
+      const container = document.getElementById("workout-exercises");
+      const type = getWorkoutType();
+
+      if (!workoutItems.length) {
+        container.innerHTML = `<p class="card__meta">No exercises added yet.</p>`;
+        return;
+      }
+
+      container.innerHTML = workoutItems.map((item, index) => {
+        const ex = exercises.find((e) => e.id === item.exerciseId);
+        const fields = type === "cardio"
+          ? `
+            <div class="form-group"><label class="form-label">Duration (min)</label>
+              <input class="form-input" type="number" min="1" value="${item.durationMin || 20}" data-field="durationMin" data-index="${index}"></div>
+            <div class="form-group"><label class="form-label">Intensity</label>
+              <input class="form-input" type="text" value="${escapeHtml(item.intensity || "Moderate")}" data-field="intensity" data-index="${index}"></div>
+            <div class="form-group"><label class="form-label">Distance</label>
+              <input class="form-input" type="text" value="${escapeHtml(item.distance || "")}" placeholder="e.g. 5 km" data-field="distance" data-index="${index}"></div>`
+          : `
+            <div class="form-group"><label class="form-label">Sets</label>
+              <input class="form-input" type="number" min="1" value="${item.sets || 3}" data-field="sets" data-index="${index}"></div>
+            <div class="form-group"><label class="form-label">Reps</label>
+              <input class="form-input" type="text" value="${escapeHtml(String(item.reps || "10"))}" data-field="reps" data-index="${index}"></div>
+            <div class="form-group"><label class="form-label">Rest (s)</label>
+              <input class="form-input" type="number" min="0" value="${item.restSec || 60}" data-field="restSec" data-index="${index}"></div>`;
+
+        return `
+          <div class="plan-exercise-row">
+            <div class="plan-exercise-row__header">
+              <span class="plan-exercise-row__name">${escapeHtml(ex?.name || "Exercise")}</span>
+              <button type="button" class="btn btn--danger btn--sm" data-remove="${index}">Remove</button>
+            </div>
+            <div class="plan-exercise-row__fields">${fields}</div>
+          </div>`;
+      }).join("");
+
+      container.querySelectorAll("[data-remove]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          workoutItems.splice(Number(btn.dataset.remove), 1);
+          renderWorkoutExerciseRows();
+        });
+      });
+
+      container.querySelectorAll("[data-field]").forEach((input) => {
+        input.addEventListener("change", () => {
+          const i = Number(input.dataset.index);
+          const field = input.dataset.field;
+          const numeric = ["sets", "restSec", "durationMin"];
+          workoutItems[i][field] = numeric.includes(field) ? Number(input.value) : input.value;
+        });
+      });
+    }
+
+    function populateExerciseSelect() {
+      const select = document.getElementById("add-exercise-select");
+      select.innerHTML = `<option value="">Select exercise...</option>` +
+        exercises.map((ex) => `<option value="${ex.id}">${escapeHtml(ex.name)}</option>`).join("");
+    }
+
+    function openModal(workout = null) {
+      document.getElementById("wo-type").innerHTML = renderTypeOptions(workout?.type || "weight");
+      document.getElementById("wo-focus").innerHTML = renderFocusOptions(workout?.focus || "chest");
+      document.getElementById("modal-title").textContent = workout ? "Edit Workout" : "Create Workout";
+      document.getElementById("workout-id").value = workout?.id || "";
+      document.getElementById("wo-name").value = workout?.name || "";
+      document.getElementById("wo-type").value = workout?.type || "weight";
+      document.getElementById("wo-focus").value = workout?.focus || "chest";
+      workoutItems = workout?.exercises ? JSON.parse(JSON.stringify(workout.exercises)) : [];
+      populateExerciseSelect();
+      renderWorkoutExerciseRows();
+      modal.hidden = false;
+    }
+
+    function renderList() {
+      const listEl = document.getElementById("workout-list");
+      if (!workouts.length) {
+        listEl.innerHTML = `<div class="empty-state"><div class="empty-state__icon">📋</div><p>No workouts yet.</p></div>`;
+        return;
+      }
+
+      listEl.innerHTML = workouts.map((w) => `
+        <div class="admin-list-item">
+          <div class="admin-list-item__info">
+            <h3>${escapeHtml(w.name)}</h3>
+            <p>${escapeHtml(getWorkoutTypeLabel(w.type))} · ${escapeHtml(getFocusLabel(w.focus))} · ${(w.exercises || []).length} exercises</p>
+            <div style="margin-top:4px">
+              <span class="type-badge type-badge--${w.type}">${escapeHtml(getWorkoutTypeLabel(w.type))}</span>
+              <span class="focus-badge">${escapeHtml(getFocusLabel(w.focus))}</span>
+            </div>
+          </div>
+          <div class="btn-row" style="margin:0;flex:0">
+            <button class="btn btn--secondary btn--sm" data-edit="${w.id}">Edit</button>
+            <button class="btn btn--danger btn--sm" data-delete="${w.id}">Delete</button>
+          </div>
+        </div>
+      `).join("");
+
+      listEl.querySelectorAll("[data-edit]").forEach((btn) => {
+        btn.addEventListener("click", () => openModal(workouts.find((w) => w.id === btn.dataset.edit)));
+      });
+      listEl.querySelectorAll("[data-delete]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Delete this workout?")) return;
+          await deleteWorkout(btn.dataset.delete);
+          workouts = await getAllWorkouts();
+          renderList();
+        });
+      });
+    }
+
+    requireAdmin().then(async (result) => {
+      if (!result) return;
+      profile = result.profile;
+      exercises = await getAllExercises();
+      workouts = await getAllWorkouts();
+
+      app.innerHTML = `
+        <div class="admin-header">
+          <div>
+            <div class="header__title">Workouts</div>
+            <p class="header__subtitle">Weight training & cardio plans</p>
+          </div>
+        </div>
+        <a href="index.html" class="btn btn--secondary" style="width:100%;margin-bottom:12px">← Admin home</a>
+        <button class="btn btn--primary" id="add-btn" style="margin-bottom:16px">+ Create Workout</button>
+        <div class="card" id="workout-list"></div>
+      `;
+
+      document.getElementById("add-btn").addEventListener("click", () => openModal());
+      renderList();
+      mountBottomNav("admin", profile);
+    });
+
+    document.getElementById("wo-type").addEventListener("change", renderWorkoutExerciseRows);
+
+    document.getElementById("add-exercise-btn").addEventListener("click", () => {
+      const select = document.getElementById("add-exercise-select");
+      if (!select.value) return;
+      const type = getWorkoutType();
+      workoutItems.push(type === "cardio"
+        ? { exerciseId: select.value, durationMin: 20, intensity: "Moderate", distance: "", order: workoutItems.length }
+        : { exerciseId: select.value, sets: 3, reps: "10", restSec: 60, order: workoutItems.length });
+      select.value = "";
+      renderWorkoutExerciseRows();
+    });
+
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
+    document.getElementById("modal-cancel").addEventListener("click", () => { modal.hidden = true; });
+
+    document.getElementById("workout-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("workout-id").value;
+      const data = {
+        name: document.getElementById("wo-name").value,
+        type: document.getElementById("wo-type").value,
+        focus: document.getElementById("wo-focus").value,
+        exercises: workoutItems.map((item, i) => ({ ...item, order: i })),
+      };
+
+      if (id) await updateWorkout(id, data);
+      else await addWorkout(data);
+
+      modal.hidden = true;
+      workouts = await getAllWorkouts();
+      renderList();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f12">
+  <title>Admin — Fitness Park</title>
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div class="page" id="app">
+    <div class="loading-screen">
+      <div class="spinner"></div>
+      <p>Loading...</p>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/ui.js"></script>
+  <script>
+    requireAdmin().then((result) => {
+      if (!result) return;
+      const { profile } = result;
+
+      document.getElementById("app").innerHTML = `
+        <header class="header">
+          <div class="header__greeting">Admin Panel</div>
+          <p class="header__subtitle">Manage your gym</p>
+        </header>
+
+        <nav class="admin-menu">
+          <a href="users.html" class="admin-menu__item">
+            <span class="admin-menu__icon">👥</span>
+            <div class="admin-menu__text">
+              <h3>Users</h3>
+              <p>Add and view gym members</p>
+            </div>
+          </a>
+          <a href="workouts.html" class="admin-menu__item">
+            <span class="admin-menu__icon">📋</span>
+            <div class="admin-menu__text">
+              <h3>Workouts</h3>
+              <p>Create weight & cardio workout plans</p>
+            </div>
+          </a>
+          <a href="assignments.html" class="admin-menu__item">
+            <span class="admin-menu__icon">🎯</span>
+            <div class="admin-menu__text">
+              <h3>Assign Workouts</h3>
+              <p>Assign workouts to users by day</p>
+            </div>
+          </a>
+          <a href="exercises.html" class="admin-menu__item">
+            <span class="admin-menu__icon">🏋️</span>
+            <div class="admin-menu__text">
+              <h3>Exercises</h3>
+              <p>Manage exercise library</p>
+            </div>
+          </a>
+        </nav>
+      `;
+
+      mountBottomNav("admin", profile);
+    });
+  </script>
+</body>
+</html>

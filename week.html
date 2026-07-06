@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f12">
+  <title>Weekly Plan — Fitness Park</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="page" id="app">
+    <div class="loading-screen">
+      <div class="spinner"></div>
+      <p>Loading plan...</p>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/ui.js"></script>
+  <script>
+    const app = document.getElementById("app");
+    let selectedDay = getTodayDayId() || "monday";
+    let profile = null;
+    let weeklyOverview = {};
+
+    function renderDayButtons() {
+      const todayId = getTodayDayId();
+      return DAYS.map((day) => {
+        const plan = weeklyOverview[day.id] || { title: "—" };
+        const isToday = day.id === todayId;
+        const isActive = day.id === selectedDay;
+        return `
+          <button type="button" class="week-day${isToday ? " week-day--today" : ""}${isActive ? " week-day--active" : ""}"
+                  data-day="${day.id}">
+            <div class="week-day__name">${day.label}${isToday ? " · Today" : ""}</div>
+            <div class="week-day__title">${escapeHtml(plan.title || "Not assigned")}</div>
+          </button>
+        `;
+      }).join("");
+    }
+
+    async function renderWorkoutDetail() {
+      const workout = await getUserWorkoutForDay(profile.uid, selectedDay);
+      const dayInfo = getDayInfo(selectedDay);
+
+      document.getElementById("workout-detail").innerHTML = `
+        <div class="section-title">${dayInfo.full}</div>
+        <div class="card card--highlight">
+          <div class="card__title">${escapeHtml(workout.title)}</div>
+          <div class="card__meta">${workout.exercises.length} exercises</div>
+          ${renderWorkoutMeta(workout)}
+        </div>
+        <div class="card" id="exercise-list-card"></div>
+      `;
+
+      mountExerciseList(
+        document.getElementById("exercise-list-card"),
+        renderExerciseList(workout.exercises, "No workout assigned for this day.", workout.type || "weight")
+      );
+    }
+
+    async function render() {
+      weeklyOverview = await getUserWeeklyOverview(profile.uid);
+
+      app.innerHTML = `
+        <header class="header">
+          <div class="header__title">Weekly Plan</div>
+          <p class="header__subtitle">Your schedule · Monday – Saturday</p>
+        </header>
+
+        <div class="week-grid" id="day-grid">${renderDayButtons()}</div>
+        <div id="workout-detail"></div>
+      `;
+
+      document.getElementById("day-grid").addEventListener("click", async (e) => {
+        const btn = e.target.closest("[data-day]");
+        if (!btn) return;
+        selectedDay = btn.dataset.day;
+        document.querySelectorAll(".week-day").forEach((el) => el.classList.remove("week-day--active"));
+        btn.classList.add("week-day--active");
+        await renderWorkoutDetail();
+      });
+
+      await renderWorkoutDetail();
+      mountBottomNav("week", profile);
+    }
+
+    requireAuth().then(async ({ profile: p }) => {
+      profile = p;
+      try {
+        await render();
+      } catch (err) {
+        app.innerHTML = `<div class="alert alert--error">${escapeHtml(err.message)}</div>`;
+      }
+    });
+  </script>
+</body>
+</html>

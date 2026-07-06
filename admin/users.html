@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f12">
+  <title>Users — Fitness Park Admin</title>
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div class="page" id="app">
+    <div class="loading-screen"><div class="spinner"></div><p>Loading...</p></div>
+  </div>
+
+  <div class="modal-overlay" id="modal" hidden>
+    <div class="modal">
+      <h2 class="modal__title">Add User</h2>
+      <div id="modal-alert"></div>
+      <form id="user-form">
+        <div class="form-group">
+          <label class="form-label" for="user-name">Full name</label>
+          <input class="form-input" type="text" id="user-name" required placeholder="Member name">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="user-phone">Phone number</label>
+          <input class="form-input" type="tel" id="user-phone" required placeholder="9876543210">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="user-password">Password</label>
+          <div class="password-field">
+            <input class="form-input" type="password" id="user-password" required minlength="6" placeholder="At least 6 characters">
+            <button type="button" class="password-toggle" id="user-password-toggle" aria-label="Show password">Show</button>
+          </div>
+        </div>
+        <div class="modal__actions">
+          <button type="button" class="btn btn--secondary" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="modal-save">Create user</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/db.js"></script>
+  <script src="../js/ui.js"></script>
+  <script>
+    const app = document.getElementById("app");
+    const modal = document.getElementById("modal");
+    let users = [];
+    let profile = null;
+
+    function renderList() {
+      const listEl = document.getElementById("user-list");
+      if (!users.length) {
+        listEl.innerHTML = `<div class="empty-state"><div class="empty-state__icon">👥</div><p>No members yet.</p></div>`;
+        return;
+      }
+
+      listEl.innerHTML = users.map((u) => `
+        <div class="admin-list-item">
+          <div class="admin-list-item__info">
+            <h3>${escapeHtml(u.name)}</h3>
+            <p>${escapeHtml(u.phone)} · ${escapeHtml(u.role || "member")}</p>
+          </div>
+          <a href="assignments.html?user=${u.id}" class="btn btn--secondary btn--sm">Assign</a>
+        </div>
+      `).join("");
+    }
+
+    requireAdmin().then(async (result) => {
+      if (!result) return;
+      profile = result.profile;
+
+      app.innerHTML = `
+        <div class="admin-header">
+          <div>
+            <div class="header__title">Users</div>
+            <p class="header__subtitle">Gym members</p>
+          </div>
+        </div>
+        <a href="index.html" class="btn btn--secondary" style="width:100%;margin-bottom:12px">← Admin home</a>
+        <button class="btn btn--primary" id="add-btn" style="margin-bottom:16px">+ Add User</button>
+        <div class="card" id="user-list"></div>
+      `;
+
+      document.getElementById("add-btn").addEventListener("click", () => {
+        modal.hidden = false;
+        clearAlert(document.getElementById("modal-alert"));
+      });
+
+      users = await getMemberUsers();
+      renderList();
+      mountBottomNav("admin", profile);
+    });
+
+    initPasswordToggle("user-password", "user-password-toggle");
+
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.hidden = true; });
+    document.getElementById("modal-cancel").addEventListener("click", () => { modal.hidden = true; });
+
+    document.getElementById("user-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const alertBox = document.getElementById("modal-alert");
+      const saveBtn = document.getElementById("modal-save");
+      clearAlert(alertBox);
+
+      const name = document.getElementById("user-name").value;
+      const phone = document.getElementById("user-phone").value;
+      const password = document.getElementById("user-password").value;
+
+      setLoading(saveBtn, true);
+      try {
+        await adminCreateUser(phone, password, name);
+        modal.hidden = true;
+        document.getElementById("user-form").reset();
+        users = await getMemberUsers();
+        renderList();
+      } catch (err) {
+        const msg = err.code ? formatAuthError(err) : err.message;
+        showAlert(alertBox, msg);
+      } finally {
+        setLoading(saveBtn, false);
+      }
+    });
+  </script>
+</body>
+</html>

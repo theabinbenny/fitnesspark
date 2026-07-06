@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f12">
+  <title>Manage Exercises — Fitness Park</title>
+  <link rel="stylesheet" href="../css/styles.css">
+</head>
+<body>
+  <div class="page" id="app">
+    <div class="loading-screen">
+      <div class="spinner"></div>
+      <p>Loading...</p>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal" hidden>
+    <div class="modal">
+      <h2 class="modal__title" id="modal-title">Add Exercise</h2>
+      <form id="exercise-form">
+        <input type="hidden" id="exercise-id">
+        <div class="form-group">
+          <label class="form-label" for="ex-name">Exercise name</label>
+          <input class="form-input" type="text" id="ex-name" required placeholder="e.g. Bench Press">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ex-muscle">Muscle group</label>
+          <input class="form-input" type="text" id="ex-muscle" required placeholder="e.g. Chest">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ex-equipment">Equipment</label>
+          <input class="form-input" type="text" id="ex-equipment" placeholder="e.g. Barbell">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ex-notes">Notes</label>
+          <textarea class="form-textarea" id="ex-notes" placeholder="Optional tips or form cues"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ex-image">Image URL</label>
+          <input class="form-input" type="url" id="ex-image" placeholder="https://example.com/bench-press.jpg">
+          <p class="form-hint">Square image works best. Paste a direct image link.</p>
+          <div class="image-preview" id="image-preview"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="ex-youtube">YouTube video URL</label>
+          <input class="form-input" type="url" id="ex-youtube" placeholder="https://youtube.com/watch?v=...">
+          <p class="form-hint">Demo video for this exercise or cardio activity.</p>
+        </div>
+        <div class="modal__actions">
+          <button type="button" class="btn btn--secondary" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn--primary" id="modal-save">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/db.js"></script>
+  <script src="../js/ui.js"></script>
+  <script>
+    const app = document.getElementById("app");
+    const modal = document.getElementById("modal");
+    const form = document.getElementById("exercise-form");
+    let exercises = [];
+    let profile = null;
+
+    function openModal(exercise = null) {
+      document.getElementById("modal-title").textContent = exercise ? "Edit Exercise" : "Add Exercise";
+      document.getElementById("exercise-id").value = exercise?.id || "";
+      document.getElementById("ex-name").value = exercise?.name || "";
+      document.getElementById("ex-muscle").value = exercise?.muscleGroup || "";
+      document.getElementById("ex-equipment").value = exercise?.equipment || "";
+      document.getElementById("ex-notes").value = exercise?.notes || "";
+      document.getElementById("ex-image").value = exercise?.imageUrl || "";
+      document.getElementById("ex-youtube").value = exercise?.youtubeUrl || "";
+      updateImagePreview();
+      modal.hidden = false;
+    }
+
+    function updateImagePreview() {
+      const url = document.getElementById("ex-image").value.trim();
+      const preview = document.getElementById("image-preview");
+      preview.innerHTML = url
+        ? `<img src="${escapeHtml(url)}" alt="Preview" onerror="this.parentElement.innerHTML='<span class=\\'card__meta\\'>Invalid image URL</span>'">`
+        : "";
+    }
+
+    function closeModal() {
+      modal.hidden = true;
+      form.reset();
+    }
+
+    async function loadExercises() {
+      exercises = await getAllExercises();
+      renderList();
+    }
+
+    function renderList() {
+      const listEl = document.getElementById("exercise-list");
+      if (!listEl) return;
+
+      if (!exercises.length) {
+        listEl.innerHTML = `<div class="empty-state"><div class="empty-state__icon">🏋️</div><p>No exercises yet. Add your first one!</p></div>`;
+        return;
+      }
+
+      listEl.innerHTML = exercises
+        .map(
+          (ex) => `
+        <div class="admin-list-item">
+          <div class="admin-list-item__row">
+            ${renderExerciseThumb(ex, "sm")}
+            <div class="admin-list-item__info">
+              <h3>${escapeHtml(ex.name)}</h3>
+              <p>${escapeHtml(ex.muscleGroup)} · ${escapeHtml(ex.equipment)}</p>
+              ${ex.youtubeUrl ? `<p style="font-size:0.75rem;color:var(--accent)">▶ Video linked</p>` : ""}
+            </div>
+          </div>
+          <div class="btn-row" style="margin:0;flex:0">
+            <button class="btn btn--secondary btn--sm" data-edit="${ex.id}">Edit</button>
+            <button class="btn btn--danger btn--sm" data-delete="${ex.id}">Delete</button>
+          </div>
+        </div>`
+        )
+        .join("");
+
+      listEl.querySelectorAll("[data-edit]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const ex = exercises.find((e) => e.id === btn.dataset.edit);
+          openModal(ex);
+        });
+      });
+
+      listEl.querySelectorAll("[data-delete]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          if (!confirm("Delete this exercise?")) return;
+          await deleteExercise(btn.dataset.delete);
+          await loadExercises();
+        });
+      });
+    }
+
+    function renderShell() {
+      app.innerHTML = `
+        <div class="admin-header">
+          <div>
+            <div class="header__title">Exercises</div>
+            <p class="header__subtitle">Manage your exercise library</p>
+          </div>
+        </div>
+
+        <a href="index.html" class="btn btn--secondary" style="width:100%;margin-bottom:12px">← Admin home</a>
+
+        <button class="btn btn--primary" id="add-btn" style="margin-bottom:16px">+ Add Exercise</button>
+
+        <div class="card" id="exercise-list"></div>
+      `;
+
+      document.getElementById("add-btn").addEventListener("click", () => openModal());
+      mountBottomNav("admin", profile);
+    }
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+    document.getElementById("modal-cancel").addEventListener("click", closeModal);
+    document.getElementById("ex-image").addEventListener("input", updateImagePreview);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("exercise-id").value;
+      const youtubeUrl = document.getElementById("ex-youtube").value.trim();
+      if (youtubeUrl && !parseYoutubeId(youtubeUrl)) {
+        alert("Please enter a valid YouTube URL.");
+        return;
+      }
+
+      const data = {
+        name: document.getElementById("ex-name").value,
+        muscleGroup: document.getElementById("ex-muscle").value,
+        equipment: document.getElementById("ex-equipment").value,
+        notes: document.getElementById("ex-notes").value,
+        imageUrl: document.getElementById("ex-image").value,
+        youtubeUrl,
+      };
+
+      if (id) {
+        await updateExercise(id, data);
+      } else {
+        await addExercise(data);
+      }
+
+      closeModal();
+      await loadExercises();
+    });
+
+    requireAdmin().then(async (result) => {
+      if (!result) return;
+      profile = result.profile;
+      renderShell();
+      await loadExercises();
+    });
+  </script>
+</body>
+</html>
